@@ -129,6 +129,9 @@ public class User {
     @Column
     private String portfolioUrl;
 
+    @Column
+    private Integer graduationYear;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

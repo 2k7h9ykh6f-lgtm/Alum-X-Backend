@@ -23,6 +23,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -96,6 +97,38 @@ class UserSearchControllerTest {
                 .header("Authorization", "Bearer " + authToken)
                 .exchangeToMono(response -> Mono.just(response.statusCode()))
                 .block();
+    }
+
+    private List<UserResponseDto> searchUsersWithFilters(String query, Map<String, ?> params) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    uriBuilder.path("/api/users/search").queryParam("q", query);
+                    params.forEach(uriBuilder::queryParam);
+                    return uriBuilder.build();
+                })
+                .header("Authorization", "Bearer " + authToken)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<List<UserResponseDto>>() {})
+                .block();
+    }
+
+    private void createRichUser(String username, String name, String email,
+                                 UserRole role, String company,
+                                 List<String> skills, Integer graduationYear) {
+        User user = User.builder()
+                .username(username)
+                .name(name)
+                .email(email)
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(role)
+                .profileCompleted(true)
+                .currentCompany(company)
+                .skills(skills)
+                .graduationYear(graduationYear)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        userRepository.save(user);
     }
 
     @Nested
@@ -328,6 +361,87 @@ class UserSearchControllerTest {
         void searchWithHtmlTags() {
             List<UserResponseDto> result = searchUsers("<script>alert('xss')</script>");
             assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Filter Search - Combined Filter Tests")
+    class FilterSearchTests {
+
+        @BeforeEach
+        void setupFilterData() {
+            createRichUser("filter_alice", "Alice Engineer", "alice_f@test.com",
+                    UserRole.ALUMNI, "Google",
+                    List.of("Java", "Spring", "Kubernetes"), 2020);
+            createRichUser("filter_bob", "Bob Developer", "bob_f@test.com",
+                    UserRole.ALUMNI, "Microsoft",
+                    List.of("Python", "Django", "React"), 2019);
+            createRichUser("filter_charlie", "Charlie Intern", "charlie_f@test.com",
+                    UserRole.STUDENT, "Google",
+                    List.of("Java", "React"), 2025);
+            createRichUser("filter_diana", "Diana Professor", "diana_f@test.com",
+                    UserRole.PROFESSOR, "University",
+                    List.of("Research", "Machine Learning"), 2010);
+        }
+
+        @Test
+        @DisplayName("Should filter by role via endpoint")
+        void filterByRoleEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("role", "ALUMNI"));
+            assertThat(result).isNotEmpty();
+            assertThat(result).allMatch(u -> u.getRole() == UserRole.ALUMNI);
+        }
+
+        @Test
+        @DisplayName("Should filter by currentCompany via endpoint (case-insensitive)")
+        void filterByCompanyEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("currentCompany", "google"));
+            assertThat(result).hasSizeGreaterThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("Should filter by graduationYear via endpoint")
+        void filterByGraduationYearEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("graduationYear", 2020));
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getName()).isEqualTo("Alice Engineer");
+        }
+
+        @Test
+        @DisplayName("Should filter by skills via endpoint")
+        void filterBySkillsEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("skills", List.of("Java")));
+            assertThat(result).hasSizeGreaterThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("Should combine role + company filters via endpoint")
+        void filterByRoleAndCompanyEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("role", "ALUMNI", "currentCompany", "Google"));
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getName()).isEqualTo("Alice Engineer");
+        }
+
+        @Test
+        @DisplayName("Should combine all filters and return empty when no match")
+        void filterAllNoMatchEndpoint() {
+            List<UserResponseDto> result = searchUsersWithFilters("a",
+                    Map.of("role", "PROFESSOR", "currentCompany", "Google",
+                            "graduationYear", 2020));
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should behave like original search when no filters provided")
+        void noFiltersBehavesLikeOriginal() {
+            List<UserResponseDto> result = searchUsers("john");
+            assertThat(result).isNotEmpty();
+            assertThat(result.get(0).getName()).contains("John");
         }
     }
 }
