@@ -1,8 +1,10 @@
 package com.opencode.alumxbackend.jobposts.service;
 
 import com.opencode.alumxbackend.common.exception.Errors.ResourceNotFoundException;
-import com.opencode.alumxbackend.jobposts.dto.JobPostResponse;
+import com.opencode.alumxbackend.jobposts.dto.*;
 import com.opencode.alumxbackend.jobposts.model.JobPost;
+import com.opencode.alumxbackend.jobposts.repository.CommentRepository;
+import com.opencode.alumxbackend.jobposts.repository.JobPostLikeRepository;
 import com.opencode.alumxbackend.jobposts.repository.JobPostRepository;
 import com.opencode.alumxbackend.users.model.User;
 import com.opencode.alumxbackend.users.model.UserRole;
@@ -14,6 +16,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -22,7 +27,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class JobPostServiceImplTest {
@@ -32,6 +39,12 @@ class JobPostServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private JobPostLikeRepository jobPostLikeRepository;
+
+    @Mock
+    private CommentRepository commentRepository;
 
     @InjectMocks
     private JobPostServiceImpl jobPostService;
@@ -125,5 +138,142 @@ class JobPostServiceImplTest {
         assertThat(response.getContent()).isNotNull();
         assertThat(response.getCreatedAt()).isNotNull();
         assertThat(response.getUpdatedAt()).isNotNull();
+        assertThat(response.getUsername()).isEqualTo("testuser");
+        assertThat(response.getLikeCount()).isEqualTo(0);
+        assertThat(response.getCommentCount()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("searchPosts - default sort calls searchPosts repository method")
+    void searchPosts_defaultSort_callsSearchPosts() {
+        PostSearchRequest request = PostSearchRequest.builder().build();
+        Page<JobPost> page = new PageImpl<>(List.of(testPost1));
+        when(jobPostRepository.searchPosts(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPosts(any(), any(), any(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - latest sort explicitly calls searchPosts")
+    void searchPosts_latestSort_callsSearchPosts() {
+        PostSearchRequest request = PostSearchRequest.builder().sortBy("latest").build();
+        Page<JobPost> page = new PageImpl<>(List.of(testPost1));
+        when(jobPostRepository.searchPosts(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPosts(any(), any(), any(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - mostLiked sort calls searchPostsMostLiked")
+    void searchPosts_mostLiked_callsMostLiked() {
+        PostSearchRequest request = PostSearchRequest.builder().sortBy("most_liked").build();
+
+        PostWithCountsProjection projection = createMockProjection(1L, "testuser", "desc", 5L, 0L);
+        Page<PostWithCountsProjection> page = new PageImpl<>(List.of(projection));
+        when(jobPostRepository.searchPostsMostLiked(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        assertThat(result.getPosts().get(0).getLikeCount()).isEqualTo(5);
+        verify(jobPostRepository).searchPostsMostLiked(any(), any(), any(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - mostCommented sort calls searchPostsMostCommented")
+    void searchPosts_mostCommented_callsMostCommented() {
+        PostSearchRequest request = PostSearchRequest.builder().sortBy("most_commented").build();
+
+        PostWithCountsProjection projection = createMockProjection(1L, "testuser", "desc", 0L, 3L);
+        Page<PostWithCountsProjection> page = new PageImpl<>(List.of(projection));
+        when(jobPostRepository.searchPostsMostCommented(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        assertThat(result.getPosts().get(0).getCommentCount()).isEqualTo(3);
+        verify(jobPostRepository).searchPostsMostCommented(any(), any(), any(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - with username calls username-variant method for latest")
+    void searchPosts_withUsername_latest() {
+        PostSearchRequest request = PostSearchRequest.builder()
+                .sortBy("latest").username("john").build();
+        Page<JobPost> page = new PageImpl<>(List.of(testPost1));
+        when(jobPostRepository.searchPostsWithUsername(any(), any(), any(), eq("john"), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPostsWithUsername(any(), any(), any(), eq("john"), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - mostLiked with username calls username-variant method")
+    void searchPosts_mostLikedWithUsername() {
+        PostSearchRequest request = PostSearchRequest.builder()
+                .sortBy("most_liked").username("john").build();
+
+        PostWithCountsProjection projection = createMockProjection(1L, "john", "desc", 2L, 0L);
+        Page<PostWithCountsProjection> page = new PageImpl<>(List.of(projection));
+        when(jobPostRepository.searchPostsMostLikedByUsername(any(), any(), any(), eq("john"), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPostsMostLikedByUsername(any(), any(), any(), eq("john"), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - invalid sortBy defaults to latest")
+    void searchPosts_invalidSortBy_defaultsToLatest() {
+        PostSearchRequest request = PostSearchRequest.builder().sortBy("invalid_sort").build();
+        Page<JobPost> page = new PageImpl<>(List.of(testPost1));
+        when(jobPostRepository.searchPosts(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPosts(any(), any(), any(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchPosts - null sortBy defaults to latest")
+    void searchPosts_nullSortBy_defaultsToLatest() {
+        PostSearchRequest request = PostSearchRequest.builder().sortBy(null).build();
+        Page<JobPost> page = new PageImpl<>(List.of(testPost1));
+        when(jobPostRepository.searchPosts(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
+
+        PagedPostResponse result = jobPostService.searchPosts(request);
+
+        assertThat(result.getPosts()).hasSize(1);
+        verify(jobPostRepository).searchPosts(any(), any(), any(), any(Pageable.class));
+    }
+
+    private PostWithCountsProjection createMockProjection(Long postId, String username,
+                                                          String description, Long likeCount, Long commentCount) {
+        return new PostWithCountsProjection() {
+            @Override public Long getPostId() { return postId; }
+            @Override public String getUsername() { return username; }
+            @Override public String getDescription() { return description; }
+            @Override public LocalDateTime getCreatedAt() { return LocalDateTime.now(); }
+            @Override public Long getLikeCount() { return likeCount; }
+            @Override public Long getCommentCount() { return commentCount; }
+        };
     }
 }

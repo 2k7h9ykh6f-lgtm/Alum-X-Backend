@@ -12,25 +12,37 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Builder
 public class PostSearchRequest {
-    
+
     private String keyword;
     private LocalDateTime dateFrom;
     private LocalDateTime dateTo;
     private Integer page;
     private Integer size;
-    
+    private String sortBy;
+    private String username;
+
     public int getPageOrDefault() {
         return page != null && page >= 0 ? page : 0;
     }
-    
+
     public int getSizeOrDefault() {
         if (size == null) return 10;
         if (size < 1) return 1;
         if (size > 100) return 100;
         return size;
     }
-    
+
     public String getKeyword() {
         return keyword != null ? keyword.trim() : null;
+    }
+
+    public String getSortByOrDefault() {
+        if (sortBy == null || sortBy.isBlank()) return "latest";
+        return sortBy.trim().toLowerCase();
+    }
+
+    public String getUsername() {
+        if (username == null || username.isBlank()) return null;
+        return username.trim();
     }
 }

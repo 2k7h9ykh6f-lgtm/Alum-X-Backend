@@ -77,7 +77,7 @@ public class JobPostServiceImpl implements JobPostService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found with postId: " + postId));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        
+
         try {
             JobPostLike like = JobPostLike.builder()
                     .jobPost(post)
@@ -140,15 +140,60 @@ public class JobPostServiceImpl implements JobPostService {
                 searchRequest.getPageOrDefault(),
                 searchRequest.getSizeOrDefault()
         );
-        
-        Page<JobPost> postPage = jobPostRepository.searchPosts(
-                searchRequest.getKeyword(),
-                searchRequest.getDateFrom(),
-                searchRequest.getDateTo(),
-                pageable
-        );
-        
-        Page<JobPostResponse> responsePage = postPage.map(JobPostResponse::fromEntity);
+
+        String keyword = searchRequest.getKeyword();
+        LocalDateTime dateFrom = searchRequest.getDateFrom();
+        LocalDateTime dateTo = searchRequest.getDateTo();
+        String username = searchRequest.getUsername();
+
+        SortBy sortBy;
+        try {
+            sortBy = SortBy.valueOf(searchRequest.getSortByOrDefault().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            sortBy = SortBy.LATEST;
+        }
+
+        Page<JobPostResponse> responsePage;
+
+        switch (sortBy) {
+            case MOST_LIKED:
+                Page<PostWithCountsProjection> likedPage;
+                if (username != null) {
+                    likedPage = jobPostRepository.searchPostsMostLikedByUsername(
+                            keyword, dateFrom, dateTo, username, pageable);
+                } else {
+                    likedPage = jobPostRepository.searchPostsMostLiked(
+                            keyword, dateFrom, dateTo, pageable);
+                }
+                responsePage = likedPage.map(JobPostResponse::fromProjection);
+                break;
+
+            case MOST_COMMENTED:
+                Page<PostWithCountsProjection> commentedPage;
+                if (username != null) {
+                    commentedPage = jobPostRepository.searchPostsMostCommentedByUsername(
+                            keyword, dateFrom, dateTo, username, pageable);
+                } else {
+                    commentedPage = jobPostRepository.searchPostsMostCommented(
+                            keyword, dateFrom, dateTo, pageable);
+                }
+                responsePage = commentedPage.map(JobPostResponse::fromProjection);
+                break;
+
+            case LATEST:
+            default:
+                Page<JobPost> postPage;
+                if (username != null) {
+                    postPage = jobPostRepository.searchPostsWithUsername(
+                            keyword, dateFrom, dateTo, username, pageable);
+                } else {
+                    postPage = jobPostRepository.searchPosts(
+                            keyword, dateFrom, dateTo, pageable);
+                }
+                responsePage = postPage.map(JobPostResponse::fromEntity);
+                break;
+        }
+
         return PagedPostResponse.fromPage(responsePage);
     }
 

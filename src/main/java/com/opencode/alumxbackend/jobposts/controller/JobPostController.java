@@ -72,7 +72,9 @@ public class JobPostController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateTo,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String username
     ) {
         PostSearchRequest searchRequest = PostSearchRequest.builder()
                 .keyword(keyword)
@@ -80,6 +82,8 @@ public class JobPostController {
                 .dateTo(dateTo)
                 .page(page)
                 .size(size)
+                .sortBy(sortBy)
+                .username(username)
                 .build();
 
         PagedPostResponse response = jobPostService.searchPosts(searchRequest);

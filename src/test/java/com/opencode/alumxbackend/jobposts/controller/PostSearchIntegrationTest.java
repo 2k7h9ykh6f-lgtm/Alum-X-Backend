@@ -2,8 +2,11 @@ package com.opencode.alumxbackend.jobposts.controller;
 
 import com.opencode.alumxbackend.auth.dto.LoginRequest;
 import com.opencode.alumxbackend.auth.dto.LoginResponse;
+import com.opencode.alumxbackend.jobposts.dto.CommentRequest;
 import com.opencode.alumxbackend.jobposts.dto.PagedPostResponse;
 import com.opencode.alumxbackend.jobposts.model.JobPost;
+import com.opencode.alumxbackend.jobposts.model.JobPostLike;
+import com.opencode.alumxbackend.jobposts.repository.JobPostLikeRepository;
 import com.opencode.alumxbackend.jobposts.repository.JobPostRepository;
 import com.opencode.alumxbackend.users.model.User;
 import com.opencode.alumxbackend.users.model.UserRole;
@@ -35,6 +38,9 @@ class PostSearchIntegrationTest {
 
     @Autowired
     private JobPostRepository jobPostRepository;
+
+    @Autowired
+    private JobPostLikeRepository jobPostLikeRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -451,5 +457,232 @@ class PostSearchIntegrationTest {
         assertThat(response.getPosts().get(0).getContent().toLowerCase()).contains("devops");
         // Oldest post should be last
         assertThat(response.getPosts().get(4).getContent().toLowerCase()).contains("backend");
+    }
+
+    @Test
+    void testSortByMostLiked() {
+        // Create posts and add likes via repository
+        JobPost postA = jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Most liked Java Spring Boot position")
+                .createdAt(LocalDateTime.now().minusHours(3))
+                .build());
+        JobPost postB = jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Moderately liked Python Django role")
+                .createdAt(LocalDateTime.now().minusHours(2))
+                .build());
+
+        // postA: 5 likes (most)
+        for (int i = 0; i < 5; i++) {
+            User liker = userRepository.save(User.builder()
+                    .username("likera" + System.nanoTime() + "_" + i)
+                    .name("Liker A" + i)
+                    .email("likera" + System.nanoTime() + "_" + i + "@test.com")
+                    .passwordHash("pwd")
+                    .role(UserRole.STUDENT)
+                    .profileCompleted(false)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build());
+            jobPostLikeRepository.save(JobPostLike.builder()
+                    .jobPost(postA).user(liker).createdAt(LocalDateTime.now()).build());
+        }
+        // postB: 2 likes
+        for (int i = 0; i < 2; i++) {
+            User liker = userRepository.save(User.builder()
+                    .username("likerb" + System.nanoTime() + "_" + i)
+                    .name("Liker B" + i)
+                    .email("likerb" + System.nanoTime() + "_" + i + "@test.com")
+                    .passwordHash("pwd")
+                    .role(UserRole.STUDENT)
+                    .profileCompleted(false)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build());
+            jobPostLikeRepository.save(JobPostLike.builder()
+                    .jobPost(postB).user(liker).createdAt(LocalDateTime.now()).build());
+        }
+
+        PagedPostResponse response = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/posts/search")
+                        .queryParam("sortBy", "most_liked")
+                        .build())
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(PagedPostResponse.class)
+                .block();
+
+        assertThat(response).isNotNull();
+        // postA (5 likes) should be first, postB (2 likes) should be second
+        assertThat(response.getPosts().get(0).getId()).isEqualTo(postA.getPostId());
+        assertThat(response.getPosts().get(0).getLikeCount()).isEqualTo(5);
+        assertThat(response.getPosts().get(1).getId()).isEqualTo(postB.getPostId());
+        assertThat(response.getPosts().get(1).getLikeCount()).isEqualTo(2);
+    }
+
+    @Test
+    void testSortByMostCommented() {
+        // Create posts with comments via API
+        JobPost postA = jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Highly commented Java microservices position available now for experienced developers who want to work on cutting edge technology")
+                .createdAt(LocalDateTime.now().minusHours(3))
+                .build());
+        JobPost postB = jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Single comment Python testing role open for mid level engineers interested in automation frameworks")
+                .createdAt(LocalDateTime.now().minusHours(2))
+                .build());
+
+        // postA: 3 comments
+        for (int i = 0; i < 3; i++) {
+            webClient.post()
+                    .uri("/api/jobpost/addcomment/" + postA.getPostId())
+                    .header("Authorization", "Bearer " + accessToken)
+                    .bodyValue(new CommentRequest("Test comment " + i, testUser.getId()))
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+        }
+        // postB: 1 comment
+        webClient.post()
+                .uri("/api/jobpost/addcomment/" + postB.getPostId())
+                .header("Authorization", "Bearer " + accessToken)
+                .bodyValue(new CommentRequest("One comment here", testUser.getId()))
+                .retrieve()
+                .toBodilessEntity()
+                .block();
+
+        PagedPostResponse response = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/posts/search")
+                        .queryParam("sortBy", "most_commented")
+                        .build())
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(PagedPostResponse.class)
+                .block();
+
+        assertThat(response).isNotNull();
+        // postA (3 comments) should be first, postB (1 comment) should be second
+        assertThat(response.getPosts().get(0).getId()).isEqualTo(postA.getPostId());
+        assertThat(response.getPosts().get(0).getCommentCount()).isEqualTo(3);
+        assertThat(response.getPosts().get(1).getId()).isEqualTo(postB.getPostId());
+        assertThat(response.getPosts().get(1).getCommentCount()).isEqualTo(1);
+    }
+
+    @Test
+    void testFilterByUsername() {
+        // Create second user
+        User secondUser = userRepository.save(User.builder()
+                .username("otherauthor")
+                .email("otherauthor@test.com")
+                .name("Other Author")
+                .passwordHash("pwd")
+                .role(UserRole.ALUMNI)
+                .profileCompleted(false)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        // Create posts for both users
+        jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Searchtestuser unique Java backend developer role")
+                .createdAt(LocalDateTime.now().minusHours(1))
+                .build());
+        jobPostRepository.save(JobPost.builder()
+                .username(secondUser.getUsername())
+                .description("Otherauthor unique Python data science opening available")
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        // Filter by secondUser's username
+        PagedPostResponse response = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/posts/search")
+                        .queryParam("username", secondUser.getUsername())
+                        .build())
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(PagedPostResponse.class)
+                .block();
+
+        assertThat(response).isNotNull();
+        // Should only contain posts by secondUser
+        assertThat(response.getPosts()).allMatch(
+                p -> p.getUsername().equals(secondUser.getUsername()));
+        assertThat(response.getPosts()).hasSizeGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void testCombinedSortAndFilter() {
+        User filterUser = userRepository.save(User.builder()
+                .username("comboauthor")
+                .email("comboauthor@test.com")
+                .name("Combo Author")
+                .passwordHash("pwd")
+                .role(UserRole.ALUMNI)
+                .profileCompleted(false)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+
+        // Create posts by filterUser
+        JobPost userPost1 = jobPostRepository.save(JobPost.builder()
+                .username(filterUser.getUsername())
+                .description("Combo Java Spring Boot microservices position for senior engineers")
+                .createdAt(LocalDateTime.now().minusHours(2))
+                .build());
+        JobPost userPost2 = jobPostRepository.save(JobPost.builder()
+                .username(filterUser.getUsername())
+                .description("Combo Python Django web development role for mid level")
+                .createdAt(LocalDateTime.now().minusHours(1))
+                .build());
+
+        // Create post by another user (should be filtered out)
+        jobPostRepository.save(JobPost.builder()
+                .username(testUser.getUsername())
+                .description("Combo Java position by different author that should not appear")
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        // Add more likes to userPost1
+        for (int i = 0; i < 3; i++) {
+            User liker = userRepository.save(User.builder()
+                    .username("comboliker" + System.nanoTime() + "_" + i)
+                    .name("Combo Liker " + i)
+                    .email("comboliker" + System.nanoTime() + "_" + i + "@test.com")
+                    .passwordHash("pwd")
+                    .role(UserRole.STUDENT)
+                    .profileCompleted(false)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build());
+            jobPostLikeRepository.save(JobPostLike.builder()
+                    .jobPost(userPost1).user(liker).createdAt(LocalDateTime.now()).build());
+        }
+
+        // Sort by most liked + filter by username
+        PagedPostResponse response = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/posts/search")
+                        .queryParam("sortBy", "most_liked")
+                        .queryParam("username", filterUser.getUsername())
+                        .build())
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(PagedPostResponse.class)
+                .block();
+
+        assertThat(response).isNotNull();
+        // Should only contain filterUser's posts
+        assertThat(response.getPosts()).allMatch(
+                p -> p.getUsername().equals(filterUser.getUsername()));
+        // userPost1 (3 likes) should be first
+        assertThat(response.getPosts().get(0).getId()).isEqualTo(userPost1.getPostId());
+        assertThat(response.getPosts().get(0).getLikeCount()).isEqualTo(3);
     }
 }
