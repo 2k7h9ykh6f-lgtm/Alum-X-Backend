@@ -14,11 +14,13 @@ import java.time.LocalDateTime;
 public class PostSearchRequest {
     
     private String keyword;
+    private String username;
+    private String sort;
     private LocalDateTime dateFrom;
     private LocalDateTime dateTo;
     private Integer page;
     private Integer size;
-    
+
     public int getPageOrDefault() {
         return page != null && page >= 0 ? page : 0;
     }
@@ -32,5 +34,13 @@ public class PostSearchRequest {
     
     public String getKeyword() {
         return keyword != null ? keyword.trim() : null;
+    }
+
+    public String getUsername() {
+        return username != null && !username.isBlank() ? username.trim() : null;
+    }
+
+    public PostSortType getSortOrDefault() {
+        return PostSortType.fromString(sort);
     }
 }

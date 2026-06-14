@@ -69,6 +69,8 @@ public class JobPostController {
     @GetMapping("/posts/search")
     public ResponseEntity<PagedPostResponse> searchPosts(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String sort,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateTo,
             @RequestParam(required = false) Integer page,
@@ -76,6 +78,8 @@ public class JobPostController {
     ) {
         PostSearchRequest searchRequest = PostSearchRequest.builder()
                 .keyword(keyword)
+                .username(username)
+                .sort(sort)
                 .dateFrom(dateFrom)
                 .dateTo(dateTo)
                 .page(page)

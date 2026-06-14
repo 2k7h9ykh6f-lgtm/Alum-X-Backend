@@ -140,14 +140,21 @@ public class JobPostServiceImpl implements JobPostService {
                 searchRequest.getPageOrDefault(),
                 searchRequest.getSizeOrDefault()
         );
-        
-        Page<JobPost> postPage = jobPostRepository.searchPosts(
-                searchRequest.getKeyword(),
-                searchRequest.getDateFrom(),
-                searchRequest.getDateTo(),
-                pageable
-        );
-        
+
+        String keyword = searchRequest.getKeyword();
+        String username = searchRequest.getUsername();
+        LocalDateTime dateFrom = searchRequest.getDateFrom();
+        LocalDateTime dateTo = searchRequest.getDateTo();
+
+        Page<JobPost> postPage = switch (searchRequest.getSortOrDefault()) {
+            case MOST_LIKED ->
+                    jobPostRepository.searchPostsMostLiked(keyword, username, dateFrom, dateTo, pageable);
+            case MOST_COMMENTED ->
+                    jobPostRepository.searchPostsMostCommented(keyword, username, dateFrom, dateTo, pageable);
+            case LATEST ->
+                    jobPostRepository.searchPostsLatest(keyword, username, dateFrom, dateTo, pageable);
+        };
+
         Page<JobPostResponse> responsePage = postPage.map(JobPostResponse::fromEntity);
         return PagedPostResponse.fromPage(responsePage);
     }
