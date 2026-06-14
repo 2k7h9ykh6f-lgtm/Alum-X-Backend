@@ -13,10 +13,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ChatSummaryResponse {
     private Long chatId;
-    private Long otherUserId;
-    private String otherUsername;
-    private String lastMessageContent;
+    private Long peerUserId;
+    private String peerUsername;
+    private String lastMessage;
     private Long lastMessageSenderId;
     private String lastMessageSenderUsername;
     private LocalDateTime lastMessageAt;
+    private Long unreadCount;
 }

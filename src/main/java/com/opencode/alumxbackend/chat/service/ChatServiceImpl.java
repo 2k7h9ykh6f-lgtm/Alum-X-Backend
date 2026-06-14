@@ -2,6 +2,8 @@ package com.opencode.alumxbackend.chat.service;
 
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,8 @@ import com.opencode.alumxbackend.chat.model.Chat;
 import com.opencode.alumxbackend.chat.model.Message;
 import com.opencode.alumxbackend.chat.repository.ChatRepository;
 import com.opencode.alumxbackend.chat.repository.MessageRepository;
+import com.opencode.alumxbackend.chatreadreceipt.dto.UnreadCountResponse;
+import com.opencode.alumxbackend.chatreadreceipt.service.ChatReadService;
 import com.opencode.alumxbackend.common.exception.Errors.BadRequestException;
 import com.opencode.alumxbackend.users.model.User;
 import com.opencode.alumxbackend.users.repository.UserRepository;
@@ -29,6 +33,7 @@ public class ChatServiceImpl implements ChatService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ChatReadService chatReadService;
 
     @Transactional
     @Override
@@ -106,20 +111,25 @@ public class ChatServiceImpl implements ChatService {
     public List<ChatSummaryResponse> listUserChats(Long userId) {
         List<ChatSummaryView> chats = chatRepository.findChatSummariesForUser(userId);
 
+        // Build a map of chatId -> unreadCount from the read-receipt service
+        Map<Long, Long> unreadByChat = chatReadService.getAllUnreadCounts(userId).stream()
+                .collect(Collectors.toMap(UnreadCountResponse::getChatId, UnreadCountResponse::getUnreadCount));
+
         return chats.stream()
                 .map(view -> {
                     boolean isUser1 = userId.equals(view.getUser1Id());
-                    Long otherUserId = isUser1 ? view.getUser2Id() : view.getUser1Id();
-                    String otherUsername = isUser1 ? view.getUser2Username() : view.getUser1Username();
+                    Long peerUserId = isUser1 ? view.getUser2Id() : view.getUser1Id();
+                    String peerUsername = isUser1 ? view.getUser2Username() : view.getUser1Username();
 
                     return ChatSummaryResponse.builder()
                             .chatId(view.getChatId())
-                            .otherUserId(otherUserId)
-                            .otherUsername(otherUsername)
-                            .lastMessageContent(view.getLastMessageContent())
+                            .peerUserId(peerUserId)
+                            .peerUsername(peerUsername)
+                            .lastMessage(view.getLastMessageContent())
                             .lastMessageSenderId(view.getLastMessageSenderId())
                             .lastMessageSenderUsername(view.getLastMessageSenderUsername())
                             .lastMessageAt(view.getLastMessageCreatedAt())
+                            .unreadCount(unreadByChat.getOrDefault(view.getChatId(), 0L))
                             .build();
                 })
                 .toList();
