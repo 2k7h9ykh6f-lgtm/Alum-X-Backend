@@ -1,9 +1,13 @@
 package com.opencode.alumxbackend.users.service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import com.opencode.alumxbackend.common.exception.Errors.BadRequestException;
 import com.opencode.alumxbackend.users.dto.UserProfileResponse;
@@ -94,6 +98,8 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
     private UserProfileResponse mapToProfileDTO(User user) {
+        ProfileCompletion completion = calculateCompletion(user);
+
         return UserProfileResponse.builder()
                 // Identity
                 .id(user.getId())
@@ -131,7 +137,9 @@ public class UserServiceImpl implements UserService {
                 .hobbies(copy(user.getHobbies()))
 
                 // Status
-                .profileCompleted(user.isProfileCompleted())
+                .profileCompleted(completion.complete())
+                .profileCompletionPercentage(completion.percentage())
+                .missingFields(completion.missingFields())
                 .build();
     }
 
@@ -214,7 +222,84 @@ public class UserServiceImpl implements UserService {
         if (request.getHobbies() != null)
             user.setHobbies(request.getHobbies());
 
+        user.setProfileCompleted(calculateCompletion(user).complete());
+
         User updatedUser = userRepository.save(user);
         return mapToProfileDTO(updatedUser);
+    }
+
+    /**
+     * Computes how complete a user's profile is, based on a fixed set of key
+     * fields ({@link ProfileField}). The percentage and missing-field list are
+     * derived on every read/update and never persisted; only the boolean
+     * {@code profileCompleted} flag is kept in sync on update so the stored
+     * column stays meaningful for other consumers.
+     */
+    private ProfileCompletion calculateCompletion(User user) {
+        List<String> missing = new ArrayList<>();
+        for (ProfileField field : ProfileField.values()) {
+            if (!field.isPopulated(user)) {
+                missing.add(field.getKey());
+            }
+        }
+        int total = ProfileField.values().length;
+        int filled = total - missing.size();
+        int percentage = (int) Math.round((double) filled / total * 100);
+        return new ProfileCompletion(percentage, List.copyOf(missing));
+    }
+
+    /**
+     * Outcome of a completeness check.
+     *
+     * @param percentage    completion as a whole-number percentage (0-100)
+     * @param missingFields keys of the still-empty fields, matching the JSON
+     *                      property names of the profile response / update request
+     */
+    record ProfileCompletion(int percentage, List<String> missingFields) {
+        boolean complete() {
+            return missingFields.isEmpty();
+        }
+    }
+
+    /**
+     * Key profile attributes that count towards completion. Each {@code key}
+     * mirrors the JSON property name in {@code UserProfileResponse} /
+     * {@code UserProfileUpdateRequest} so the frontend can map a missing entry
+     * straight back to the input that still needs to be filled.
+     */
+    private enum ProfileField {
+        ABOUT("about", u -> StringUtils.hasText(u.getAbout())),
+        CURRENT_ROLE("currentRole", u -> StringUtils.hasText(u.getCurrentRole())),
+        CURRENT_COMPANY("currentCompany", u -> StringUtils.hasText(u.getCurrentCompany())),
+        LOCATION("location", u -> StringUtils.hasText(u.getLocation())),
+        LINKEDIN_URL("linkedinUrl", u -> StringUtils.hasText(u.getLinkedinUrl())),
+        GITHUB_URL("githubUrl", u -> StringUtils.hasText(u.getGithubUrl())),
+        SKILLS("skills", u -> hasItems(u.getSkills())),
+        EDUCATION("education", u -> hasItems(u.getEducation())),
+        TECH_STACK("techStack", u -> hasItems(u.getTechStack())),
+        FRAMEWORKS("frameworks", u -> hasItems(u.getFrameworks())),
+        LANGUAGES("languages", u -> hasItems(u.getLanguages())),
+        PROJECTS("projects", u -> hasItems(u.getProjects())),
+        CERTIFICATIONS("certifications", u -> hasItems(u.getCertifications()));
+
+        private final String key;
+        private final Predicate<User> populated;
+
+        ProfileField(String key, Predicate<User> populated) {
+            this.key = key;
+            this.populated = populated;
+        }
+
+        String getKey() {
+            return key;
+        }
+
+        boolean isPopulated(User user) {
+            return populated.test(user);
+        }
+
+        private static boolean hasItems(List<String> values) {
+            return !CollectionUtils.isEmpty(values);
+        }
     }
 }

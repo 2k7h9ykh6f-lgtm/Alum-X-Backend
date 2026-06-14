@@ -48,4 +48,8 @@ public class UserProfileResponse {
 
     // Profile status
     private Boolean profileCompleted;
+
+    // Completeness (derived server-side; additive, does not replace profileCompleted)
+    private Integer profileCompletionPercentage;
+    private List<String> missingFields;
 }
