@@ -1,5 +1,6 @@
 package com.opencode.alumxbackend.resume.controller;
 
+import com.opencode.alumxbackend.resume.dto.ResumeResponseDto;
 import com.opencode.alumxbackend.resume.model.Resume;
 import com.opencode.alumxbackend.resume.service.ResumeService;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,11 @@ public class ResumeController {
                 .status(302)
                 .header(HttpHeaders.LOCATION, resume.getFileUrl())
                 .build();
+    }
+
+    @GetMapping("/{userId}/info")
+    public ResponseEntity<ResumeResponseDto> fetchResumeInfo(@PathVariable Long userId) {
+        return ResponseEntity.ok(resumeService.getResumeInfo(userId));
     }
 
 }

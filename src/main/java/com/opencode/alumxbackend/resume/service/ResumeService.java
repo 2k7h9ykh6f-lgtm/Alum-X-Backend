@@ -2,6 +2,9 @@ package com.opencode.alumxbackend.resume.service;
 
 import com.opencode.alumxbackend.common.exception.Errors.InvalidResumeException;
 import com.opencode.alumxbackend.common.exception.Errors.ResumeNotFoundException;
+import com.opencode.alumxbackend.notifications.dto.NotificationRequest;
+import com.opencode.alumxbackend.notifications.service.NotificationService;
+import com.opencode.alumxbackend.resume.dto.ResumeResponseDto;
 import com.opencode.alumxbackend.resume.model.Resume;
 import com.opencode.alumxbackend.resume.repository.ResumeRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class ResumeService {
     private final ResumeRepository resumeRepository;
+    private final NotificationService notificationService;
 
     @Value("${resume.upload.dir}")
     private String uploadDir;
@@ -52,14 +56,38 @@ public class ResumeService {
                 .fileName(file.getOriginalFilename())
                 .fileType(contentType)
                 .fileUrl(filePath)
+                .fileSize(file.getSize())
                 .uploadedAt(LocalDateTime.now())
                 .isActive(true).isDeleted(true).build();
 
-        resumeRepository.save(resume);
+        Resume saved = resumeRepository.save(resume);
+
+        notificationService.createNotification(
+                NotificationRequest.builder()
+                        .userId(userId)
+                        .type("RESUME_UPDATED")
+                        .message("Your resume has been updated.")
+                        .referenceId(saved.getId())
+                        .build());
     }
 
     public Resume getResumeByUserId(Long userId) {
         return resumeRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResumeNotFoundException("Resume not found"));
+    }
+
+    public ResumeResponseDto getResumeInfo(Long userId) {
+        return mapToResponseDto(getResumeByUserId(userId));
+    }
+
+    private ResumeResponseDto mapToResponseDto(Resume resume) {
+        return ResumeResponseDto.builder()
+                .id(resume.getId())
+                .userId(resume.getUserId())
+                .fileName(resume.getFileName())
+                .fileType(resume.getFileType())
+                .fileSize(resume.getFileSize())
+                .updatedAt(resume.getUploadedAt())
+                .build();
     }
 }
