@@ -1,0 +1,4 @@
+Also dont name the contrller DevUser only User is enought 
+Solve the merge conflict 
+
+
