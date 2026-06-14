@@ -1,5 +1,6 @@
 package com.opencode.alumxbackend.resume.controller;
 
+import com.opencode.alumxbackend.resume.dto.ResumeResponseDto;
 import com.opencode.alumxbackend.resume.model.Resume;
 import com.opencode.alumxbackend.resume.service.ResumeService;
 import lombok.RequiredArgsConstructor;
@@ -17,12 +18,12 @@ public class ResumeController {
     private final ResumeService resumeService;
 
     @PostMapping
-    public ResponseEntity<?> uploadResume(
+    public ResponseEntity<ResumeResponseDto> uploadResume(
             @RequestParam Long userId,
             @RequestParam MultipartFile file
     ) throws Exception {
-        resumeService.uploadResume(userId, file);
-        return ResponseEntity.ok("Resume uploaded successfully");
+        ResumeResponseDto response = resumeService.uploadResume(userId, file);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{userId}")
