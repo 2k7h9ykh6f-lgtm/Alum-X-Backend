@@ -48,4 +48,6 @@ public class UserProfileResponse {
 
     // Profile status
     private Boolean profileCompleted;
+    private Integer profileCompleteness;
+    private List<String> missingFields;
 }

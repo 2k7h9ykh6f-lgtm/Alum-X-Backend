@@ -1,5 +1,6 @@
 package com.opencode.alumxbackend.users.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +25,11 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private static final List<String> KEY_FIELDS = List.of(
+            "name", "about", "currentCompany", "currentRole", "location",
+            "linkedinUrl", "skills", "education", "techStack", "experience", "projects"
+    );
 
     @Override
     public User createUser(UserRequest request) {
@@ -94,7 +100,7 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
     private UserProfileResponse mapToProfileDTO(User user) {
-        return UserProfileResponse.builder()
+        UserProfileResponse response = UserProfileResponse.builder()
                 // Identity
                 .id(user.getId())
                 .username(user.getUsername())
@@ -133,11 +139,48 @@ public class UserServiceImpl implements UserService {
                 // Status
                 .profileCompleted(user.isProfileCompleted())
                 .build();
+
+        CompletenessResult cr = calculateCompleteness(user);
+        response.setProfileCompleteness(cr.completeness());
+        response.setMissingFields(cr.missingFields());
+        response.setProfileCompleted(cr.completeness() == 100);
+        return response;
     }
 
 
     private List<String> copy(List<String> list) {
         return list == null ? List.of() : List.copyOf(list);
+    }
+
+    private record CompletenessResult(int completeness, List<String> missingFields) {}
+
+    private CompletenessResult calculateCompleteness(User user) {
+        List<String> missing = new ArrayList<>();
+
+        if (isBlank(user.getName())) missing.add("name");
+        if (isBlank(user.getAbout())) missing.add("about");
+        if (isBlank(user.getCurrentCompany())) missing.add("currentCompany");
+        if (isBlank(user.getCurrentRole())) missing.add("currentRole");
+        if (isBlank(user.getLocation())) missing.add("location");
+        if (isBlank(user.getLinkedinUrl())) missing.add("linkedinUrl");
+
+        if (isEmptyList(user.getSkills())) missing.add("skills");
+        if (isEmptyList(user.getEducation())) missing.add("education");
+        if (isEmptyList(user.getTechStack())) missing.add("techStack");
+        if (isEmptyList(user.getExperience())) missing.add("experience");
+        if (isEmptyList(user.getProjects())) missing.add("projects");
+
+        int filled = KEY_FIELDS.size() - missing.size();
+        int pct = (filled == KEY_FIELDS.size()) ? 100 : (filled * 100 / KEY_FIELDS.size());
+        return new CompletenessResult(pct, List.copyOf(missing));
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    private boolean isEmptyList(List<?> l) {
+        return l == null || l.isEmpty();
     }
 
 
@@ -213,6 +256,9 @@ public class UserServiceImpl implements UserService {
         // Personal
         if (request.getHobbies() != null)
             user.setHobbies(request.getHobbies());
+
+        CompletenessResult cr = calculateCompleteness(user);
+        user.setProfileCompleted(cr.completeness() == 100);
 
         User updatedUser = userRepository.save(user);
         return mapToProfileDTO(updatedUser);
