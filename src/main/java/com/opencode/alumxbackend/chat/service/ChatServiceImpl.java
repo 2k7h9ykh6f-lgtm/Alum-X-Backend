@@ -2,6 +2,8 @@ package com.opencode.alumxbackend.chat.service;
 
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,8 @@ import com.opencode.alumxbackend.chat.model.Chat;
 import com.opencode.alumxbackend.chat.model.Message;
 import com.opencode.alumxbackend.chat.repository.ChatRepository;
 import com.opencode.alumxbackend.chat.repository.MessageRepository;
+import com.opencode.alumxbackend.chatreadreceipt.model.ChatReadState;
+import com.opencode.alumxbackend.chatreadreceipt.repository.ChatReadStateRepository;
 import com.opencode.alumxbackend.common.exception.Errors.BadRequestException;
 import com.opencode.alumxbackend.users.model.User;
 import com.opencode.alumxbackend.users.repository.UserRepository;
@@ -27,6 +31,7 @@ public class ChatServiceImpl implements ChatService {
 
     private final ChatRepository chatRepository;
     private final MessageRepository messageRepository;
+    private final ChatReadStateRepository chatReadStateRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -106,11 +111,23 @@ public class ChatServiceImpl implements ChatService {
     public List<ChatSummaryResponse> listUserChats(Long userId) {
         List<ChatSummaryView> chats = chatRepository.findChatSummariesForUser(userId);
 
+        // Resolve the viewer's last-read marker per chat in one query, then derive
+        // the unread count per conversation. Mirrors ChatReadServiceImpl#getAllUnreadCounts.
+        Map<Long, Long> lastReadByChat = new HashMap<>();
+        for (ChatReadState state : chatReadStateRepository.findByUserId(userId)) {
+            lastReadByChat.put(state.getChatId(), state.getLastReadMessageId());
+        }
+
         return chats.stream()
                 .map(view -> {
                     boolean isUser1 = userId.equals(view.getUser1Id());
                     Long otherUserId = isUser1 ? view.getUser2Id() : view.getUser1Id();
                     String otherUsername = isUser1 ? view.getUser2Username() : view.getUser1Username();
+
+                    Long lastReadMessageId = lastReadByChat.get(view.getChatId());
+                    long unreadCount = (lastReadMessageId == null)
+                            ? chatReadStateRepository.countAllMessagesFromOther(view.getChatId(), userId)
+                            : chatReadStateRepository.countUnreadMessages(view.getChatId(), userId, lastReadMessageId);
 
                     return ChatSummaryResponse.builder()
                             .chatId(view.getChatId())
@@ -120,6 +137,7 @@ public class ChatServiceImpl implements ChatService {
                             .lastMessageSenderId(view.getLastMessageSenderId())
                             .lastMessageSenderUsername(view.getLastMessageSenderUsername())
                             .lastMessageAt(view.getLastMessageCreatedAt())
+                            .unreadCount(unreadCount)
                             .build();
                 })
                 .toList();

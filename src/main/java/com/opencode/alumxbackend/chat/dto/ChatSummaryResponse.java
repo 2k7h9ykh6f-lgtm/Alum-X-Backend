@@ -19,4 +19,5 @@ public class ChatSummaryResponse {
     private Long lastMessageSenderId;
     private String lastMessageSenderUsername;
     private LocalDateTime lastMessageAt;
+    private long unreadCount;
 }
